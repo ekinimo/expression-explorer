@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mathematical Expression Explorerexpression-explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f3f4f6;
+        }
+    </style>
+<link rel="preload" as="script" href="/expression-explorer/assets/expression-explorer-ab4fc0d36014ecd6.js" crossorigin><link rel="preload" as="fetch" type="application/wasm" href="/expression-explorer/assets/expression-explorer_bg-b93712a6d48b14b6.wasm" crossorigin></head>
+<body>
+    <div id="main"></div>
+    <script type="module">
+        import init from "./pkg/expression_explorer.js";
+        init("./pkg/expression_explorer_bg.wasm");
+    </script>
+<script>
+            // We can't use a module script here because we need to start the script immediately when streaming
+            import("/expression-explorer/assets/expression-explorer-ab4fc0d36014ecd6.js").then(
+                ({ default: init }) => {
+                init("/expression-explorer/assets/expression-explorer_bg-b93712a6d48b14b6.wasm").then((wasm) => {
+                    if (wasm.__wbindgen_start == undefined) {
+                    wasm.main();
+                    }
+                });
+                }
+            );
+            </script>
+            
+            </body>
+</html>

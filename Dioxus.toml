@@ -1,0 +1,13 @@
+[application]
+name = "expression-explorer"
+
+[web.app]
+title = "expression-explorer"
+base_path = "expression-explorer"
+
+[web.watcher]
+
+[web.resource]
+
+[web.resource.dev]
+
