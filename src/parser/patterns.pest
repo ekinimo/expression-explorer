@@ -1,0 +1,39 @@
+// common parts
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+
+
+number = @{ ASCII_DIGIT+ }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+variable = @{ identifier }
+named_variable = @{ "?" ~ identifier }
+any_number = @{ "#" ~ identifier }
+
+
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" }
+unary_op = { "-" | "+" }
+
+
+pattern = { pattern_sum }
+pattern_sum = { pattern_product ~ (add_op ~ pattern_product)* }
+pattern_product = { pattern_power ~ (mul_op ~ pattern_power)* }
+pattern_power = { pattern_value ~ ("^" ~ pattern_power)? }
+pattern_value = { 
+    unary_op* ~ (
+        pattern_function_call |
+        pattern_struct_expr |
+        var_function_call |
+        var_struct_expr |
+        any_number | 
+        named_variable |
+        number | 
+        variable | 
+        "(" ~ pattern ~ ")" 
+    )
+}
+
+
+pattern_function_call = { identifier ~ "(" ~ pattern ~ ("," ~ pattern)* ~ ")" }
+pattern_struct_expr = { identifier ~ "{" ~ pattern ~ ("," ~ pattern)* ~ "}" }
+var_function_call = { named_variable ~ "(" ~ pattern ~ ("," ~ pattern)* ~ ")" }
+var_struct_expr = { named_variable ~ "{" ~ pattern ~ ("," ~ pattern)* ~ "}" }

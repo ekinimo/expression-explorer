@@ -1,0 +1,25 @@
+// common parts
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+
+
+number = @{ ASCII_DIGIT+ }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+variable = @{ identifier }
+
+
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" }
+unary_op = { "-" | "+" }
+
+
+compute_inner = { compute_sum }
+compute_sum = { compute_product ~ (add_op ~ compute_product)* }
+compute_product = { compute_power ~ (mul_op ~ compute_power)* }
+compute_power = { compute_value ~ ("^" ~ compute_power)? }
+compute_value = {
+    unary_op* ~ (
+        number |
+        variable |
+        "(" ~ compute_inner ~ ")"
+    )
+}

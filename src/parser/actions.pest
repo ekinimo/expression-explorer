@@ -1,0 +1,40 @@
+// common parts
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+
+number = @{ ASCII_DIGIT+ }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+variable = @{ identifier }
+named_variable = @{ "?" ~ identifier }
+
+
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" }
+unary_op = { "-" | "+" }
+
+
+action = { action_sum }
+action_sum = { action_product ~ (add_op ~ action_product)* }
+action_product = { action_power ~ (mul_op ~ action_power)* }
+action_power = { action_value ~ ("^" ~ action_power)? }
+action_value = { 
+    unary_op* ~ (
+        compute_expr |
+        action_function_call |
+        action_struct_expr |
+        var_action_function_call |
+        var_action_struct_expr |
+        number | 
+        variable |
+        "(" ~ action ~ ")" 
+    )
+}
+
+// Computation expressions [expr] - placeholder that will be parsed by compute parser
+compute_expr = { "[" ~ compute_placeholder ~ "]" }
+compute_placeholder = @{ (!("]") ~ ANY)+ }
+
+
+action_function_call = { identifier ~ "(" ~ (action ~ ("," ~ action)*)? ~ ")" }
+action_struct_expr = { identifier ~ "{" ~ (action ~ ("," ~ action)*)? ~ "}" }
+var_action_function_call = { named_variable ~ "(" ~ (action ~ ("," ~ action)*)? ~ ")" }
+var_action_struct_expr = { named_variable ~ "{" ~ (action ~ ("," ~ action)*)? ~ "}" }

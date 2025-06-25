@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mathematical Expression Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body>
+    <div id="main"></div>
+    <script type="module">
+        import init from "./pkg/expression_explorer.js";
+        init("./pkg/expression_explorer_bg.wasm");
+    </script>
+</body>
+</html>

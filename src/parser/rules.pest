@@ -1,0 +1,5 @@
+
+ruleset = { ruleset_name ~ "{" ~ rule* ~ "}" }
+ruleset_name = @{ identifier }
+rule = { rule_name ~ ":" ~ pattern ~ "=>" ~ action }
+rule_name = @{ identifier }

@@ -1,0 +1,33 @@
+//  common parts
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+
+
+number = @{ ASCII_DIGIT+ }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+variable = @{ identifier }
+
+
+add_op = { "+" | "-" }
+mul_op = { "*" | "/" }
+unary_op = { "-" | "+" }
+
+
+expression = { sum }
+sum = { product ~ (add_op ~ product)* }
+product = { power ~ (mul_op ~ power)* }
+power = { value ~ ("^" ~ power)? }
+value = { 
+    unary_op* ~ (
+        function_call | 
+        struct_expr |
+        number | 
+        variable | 
+        "(" ~ expression ~ ")" 
+    )
+}
+
+
+function_call = { identifier ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" }
+
+
+struct_expr = { identifier ~ "{" ~ expression ~ ("," ~ expression)* ~ "}" }

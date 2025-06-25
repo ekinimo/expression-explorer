@@ -1,0 +1,15 @@
+//  common parts
+WHITESPACE = _{ " " | "\t" | "\n" | "\r" }
+
+
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+
+ruleset = { ruleset_name ~ "{" ~ rule* ~ "}" }
+ruleset_name = @{ identifier }
+rule = { rule_name ~ ":" ~ pattern_placeholder ~ "=>" ~ action_placeholder }
+rule_name = @{ identifier }
+
+
+pattern_placeholder = @{ (!("=>") ~ ANY)+ }
+action_placeholder = @{ (!("\n" ~ WHITESPACE* ~ rule_name ~ WHITESPACE* ~ ":") ~ !("}") ~ ANY)+ }
