@@ -1,5 +1,5 @@
 use super::super::{
-    display_components::{CompactExpressionCard, ViewMode},
+    display_components::CompactExpressionCard,
     primitives::TransformationGraph,
 };
 use crate::{ActionId, Children, DisplayNode, ExprId, PatternId, Pool, rules::Match};
@@ -16,7 +16,6 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
         }
     });
 
-    let mut view_mode = use_signal(|| ViewMode::Text);
     let mut highlighted_subexpr = use_signal(|| None::<ExprId>);
     let mut current_matches = use_signal(Vec::<Match>::new);
     let mut rules_panel_collapsed = use_signal(|| false);
@@ -78,11 +77,7 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
                         CompactExpressionCard {
                             pool: pool,
                             expr_id: *expr_id,
-                            view_mode: *view_mode.read(),
                             highlighted_subexpr: *highlighted_subexpr.read(),
-                            on_view_mode_change: move |new_mode| {
-                                view_mode.set(new_mode);
-                            },
                         }
                     }
                 }
@@ -101,7 +96,8 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
 
             if let Some(expr_id) = current_expr.read().as_ref() {
                 div { class: "flex-1 flex min-h-0",
-                    div { class: "flex-1 bg-white",
+                    div { class: "flex-1 bg-white overflow-hidden",
+                        style: "max-width: calc(100% - 320px);", // Ensure space for rules panel
                         TransformationGraph {
                             pool: pool,
                             current_expr: Some(*expr_id),
@@ -112,7 +108,7 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
                     }
 
                     if !*rules_panel_collapsed.read() {
-                        div { class: "w-80 bg-white shadow-lg border-l border-gray-200 overflow-y-auto",
+                        div { class: "w-80 flex-shrink-0 bg-white shadow-lg border-l border-gray-200 overflow-y-auto",
                             RulesSidebar {
                                 pool: pool,
                                 matches: current_matches.read().clone(),

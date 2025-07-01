@@ -1,4 +1,4 @@
-use crate::{Children, DisplayNode};
+use crate::DisplayNode;
 use dioxus::prelude::*;
 
 pub trait Styled {
@@ -442,70 +442,6 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
     }
 }
 
-#[component]
-pub fn ExpressionTreeGraph(
-    pool: Signal<crate::Pool>,
-    expr_id: crate::ExprId,
-    #[props(default = false)] mini: bool,
-) -> Element {
-    let pool_ref = pool.read();
-    let mut nodes = vec![];
-    let mut edges = vec![];
-    let mut visited = std::collections::HashSet::new();
-    let mut stack = vec![(expr_id, 0)];
-
-    while let Some((current_expr, depth)) = stack.pop() {
-        if !visited.insert(current_expr) {
-            continue;
-        }
-
-        let label = pool_ref.display_with_children(current_expr);
-        let style = if current_expr == expr_id {
-            NodeStyle::primary()
-        } else {
-            NodeStyle::child_by_depth(depth)
-        };
-
-        nodes.push(GraphNode {
-            id: current_expr,
-            label,
-            style,
-            properties: Some(format!("data-expr-id='{}'", current_expr.0)),
-        });
-
-        let children: Vec<_> = pool_ref.children(current_expr).collect();
-        for (i, child_id) in children.iter().enumerate() {
-            edges.push(GraphEdge {
-                from: current_expr,
-                to: *child_id,
-                label: if mini { None } else { Some(format!("{}", i)) },
-            });
-            stack.push((*child_id, depth + 1));
-        }
-    }
-
-    let title = if mini {
-        "Expression Tree".to_string()
-    } else {
-        format!(
-            "Expression Tree: {}",
-            pool_ref.display_with_children(expr_id)
-        )
-    };
-
-    rsx! {
-        Graph {
-            nodes: nodes,
-            edges: edges,
-            vertical: true,
-            title: title,
-            show_header: !mini,
-            empty_message: Some("No expression structure to display".to_string()),
-            on_node_click: None,
-            on_node_hover: None,
-        }
-    }
-}
 
 #[component]
 pub fn TransformationGraph(
@@ -518,57 +454,104 @@ pub fn TransformationGraph(
         let pool_ref = pool.read();
         let mut nodes = vec![];
         let mut edges = vec![];
-        let mut all_expressions = std::collections::HashSet::new();
-
-        for &source_expr in pool_ref.outgoing.keys() {
-            all_expressions.insert(source_expr);
+        let mut group_to_representative = std::collections::HashMap::new();
+        
+        // Get current expression's equivalence group
+        let current_group = pool_ref.get_equivalence_group(expr_id);
+        
+        // Collect all equivalence groups that have transformations
+        let mut relevant_groups = std::collections::HashSet::new();
+        
+        // Add current expression's group
+        if let Some(group) = current_group {
+            relevant_groups.insert(group);
         }
-        for targets in pool_ref.outgoing.values() {
-            for &(target_expr, _) in targets {
-                all_expressions.insert(target_expr);
+        
+        // Find all groups with outgoing transformations
+        for (&from_group, targets) in &pool_ref.equivalence_outgoing {
+            relevant_groups.insert(from_group);
+            for &(to_group, _) in targets {
+                relevant_groups.insert(to_group);
             }
         }
-
-        for &expr in &all_expressions {
-            let style = if expr == expr_id {
-                NodeStyle::primary()
-            } else if Some(expr) == hovered_expr {
-                NodeStyle::hover()
-            } else {
-                NodeStyle::default()
-            };
-
-            nodes.push(GraphNode {
-                id: expr,
-                label: pool_ref.display_with_children(expr),
-                style,
-                properties: Some(format!("data-expr-id='{}'", expr.0)),
-            });
+        
+        // For each group, pick a representative expression and create a node
+        for &group_id in &relevant_groups {
+            if let Some(group_exprs) = pool_ref.get_group_expressions(group_id) {
+                // Pick the first expression as representative, or the current expr if it's in this group
+                let representative = if current_group == Some(group_id) {
+                    expr_id
+                } else {
+                    *group_exprs.iter().next().unwrap()
+                };
+                
+                group_to_representative.insert(group_id, representative);
+                
+                // Create label showing all expressions in the group
+                let label = if group_exprs.len() == 1 {
+                    pool_ref.display_with_children(representative)
+                } else {
+                    format!("{{ {} }}", 
+                        group_exprs.iter()
+                            .take(3) // Show max 3 expressions
+                            .map(|&e| pool_ref.display_with_children(e))
+                            .collect::<Vec<_>>()
+                            .join(", ") + 
+                        if group_exprs.len() > 3 { " ..." } else { "" }
+                    )
+                };
+                
+                let mut style = if current_group == Some(group_id) {
+                    NodeStyle::primary()
+                } else if Some(representative) == hovered_expr {
+                    NodeStyle::hover()
+                } else {
+                    NodeStyle::default()
+                };
+                
+                // Make nodes more compact
+                style.font_size = 12;
+                style.height = 35.0;
+                style.min_width = 80.0;
+                
+                nodes.push(GraphNode {
+                    id: representative,
+                    label,
+                    style,
+                    properties: Some(format!("data-group-id='{}' data-expr-id='{}'", group_id.0, representative.0)),
+                });
+            }
         }
-
-        for &source_expr in &all_expressions {
-            if let Some(outgoing) = pool_ref.get_outgoing_transformations(source_expr) {
-                for &(target_expr, rule_id) in outgoing {
-                    let rule_name = pool_ref.display_name(pool_ref[rule_id].name);
-                    edges.push(GraphEdge {
-                        from: source_expr,
-                        to: target_expr,
-                        label: Some(rule_name),
-                    });
+        
+        // Create edges between groups
+        for &from_group in &relevant_groups {
+            if let Some(outgoing) = pool_ref.equivalence_outgoing.get(&from_group) {
+                for &(to_group, rule_id) in outgoing {
+                    if let (Some(&from_repr), Some(&to_repr)) = 
+                        (group_to_representative.get(&from_group), group_to_representative.get(&to_group)) {
+                        let rule_name = pool_ref.display_name(pool_ref[rule_id].name);
+                        edges.push(GraphEdge {
+                            from: from_repr,
+                            to: to_repr,
+                            label: Some(rule_name),
+                        });
+                    }
                 }
             }
         }
-
+        
         rsx! {
-            Graph {
-                nodes: nodes,
-                edges: edges,
-                vertical: true,
-                title: "Transformation Graph".to_string(),
-                show_header: true,
-                empty_message: Some("No transformations found. Apply rules to see the graph.".to_string()),
-                on_node_click: on_node_click,
-                on_node_hover: None,
+            div { class: "h-full w-full overflow-auto p-4",
+                Graph {
+                    nodes: nodes,
+                    edges: edges,
+                    vertical: true, // Top-down layout
+                    title: "Equivalence Classes Graph".to_string(),
+                    show_header: true,
+                    empty_message: Some("No transformations found. Apply rules to see the graph.".to_string()),
+                    on_node_click: on_node_click,
+                    on_node_hover: None,
+                }
             }
         }
     } else {

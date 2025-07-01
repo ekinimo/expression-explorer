@@ -1,7 +1,4 @@
-use super::{
-    primitives::{ExpressionTreeGraph, TransformationGraph},
-    styles,
-};
+use super::styles;
 use crate::{
     Action, ActionId, Children, DisplayNode, ExprId, ExprNode, Pattern, PatternId, Pool, RuleId,
 };
@@ -10,16 +7,12 @@ use dioxus::prelude::*;
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ViewMode {
     Text,
-    Tree,
-    Graph,
 }
 
 impl ViewMode {
     pub fn as_str(&self) -> &'static str {
         match self {
             ViewMode::Text => "text",
-            ViewMode::Tree => "tree",
-            ViewMode::Graph => "graph",
         }
     }
 }
@@ -28,9 +21,7 @@ impl ViewMode {
 pub fn ExpressionCard(
     pool: Signal<Pool>,
     expr_id: ExprId,
-    view_mode: ViewMode,
     highlighted_subexpr: Option<ExprId>,
-    on_view_mode_change: EventHandler<ViewMode>,
 ) -> Element {
     let pool_ref = pool.read();
 
@@ -47,69 +38,19 @@ pub fn ExpressionCard(
                     }
                 }
 
-                div { class: "flex bg-gray-100 rounded-lg p-1",
-                    button {
-                        class: format!("px-3 py-1 text-sm rounded transition-colors {}",
-                            if view_mode == ViewMode::Text { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Text),
-                        "Text"
-                    }
-                    button {
-                        class: format!("px-3 py-1 text-sm rounded transition-colors {}",
-                            if view_mode == ViewMode::Tree { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Tree),
-                        "Tree"
-                    }
-                    button {
-                        class: format!("px-3 py-1 text-sm rounded transition-colors {}",
-                            if view_mode == ViewMode::Graph { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Graph),
-                        "Graph"
-                    }
-                }
+                // View mode selection removed - only text view available
             }
 
             div { class: "space-y-6",
-                match view_mode {
-                    ViewMode::Text => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "text-sm font-medium text-gray-700", "Text Representation:" }
-                            div { class: "p-4 bg-gray-50 rounded-lg border font-mono text-lg",
-                                ExpressionText {
-                                    pool: pool,
-                                    expr_id: expr_id,
-                                    highlighted_subexpr: highlighted_subexpr,
-                                }
-                            }
+                div { class: "space-y-2",
+                    div { class: "text-sm font-medium text-gray-700", "Text Representation:" }
+                    div { class: "p-4 bg-gray-50 rounded-lg border font-mono text-lg",
+                        ExpressionText {
+                            pool: pool,
+                            expr_id: expr_id,
+                            highlighted_subexpr: highlighted_subexpr,
                         }
-                    },
-                    ViewMode::Tree => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "text-sm font-medium text-gray-700", "Tree Structure:" }
-                            div { class: "p-4 bg-gray-50 rounded-lg border overflow-auto",
-                                ExpressionTree {
-                                    pool: pool,
-                                    expr_id: expr_id,
-                                    highlighted_subexpr: highlighted_subexpr,
-                                    depth: 0,
-                                }
-                            }
-                        }
-                    },
-                    ViewMode::Graph => rsx! {
-                        div { class: "space-y-2",
-                            div { class: "text-sm font-medium text-gray-700", "Graph Visualization:" }
-                            div { class: "p-4 bg-gray-50 rounded-lg border",
-                                TransformationGraph {
-                                    pool: pool,
-                                    current_expr: Some(expr_id),
-                                }
-                            }
-                        }
-                    },
+                    }
                 }
 
                 div { class: "flex gap-6 pt-4 border-t text-sm text-gray-600",
@@ -126,9 +67,7 @@ pub fn ExpressionCard(
 pub fn CompactExpressionCard(
     pool: Signal<Pool>,
     expr_id: ExprId,
-    view_mode: ViewMode,
     highlighted_subexpr: Option<ExprId>,
-    on_view_mode_change: EventHandler<ViewMode>,
 ) -> Element {
     let pool_ref = pool.read();
 
@@ -145,61 +84,16 @@ pub fn CompactExpressionCard(
                     }
                 }
 
-                div { class: "flex bg-gray-100 rounded p-1",
-                    button {
-                        class: format!("px-2 py-1 text-xs rounded transition-colors {}",
-                            if view_mode == ViewMode::Text { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Text),
-                        "Text"
-                    }
-                    button {
-                        class: format!("px-2 py-1 text-xs rounded transition-colors {}",
-                            if view_mode == ViewMode::Tree { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Tree),
-                        "Tree"
-                    }
-                    button {
-                        class: format!("px-2 py-1 text-xs rounded transition-colors {}",
-                            if view_mode == ViewMode::Graph { "bg-white shadow text-blue-600" } else { "text-gray-600 hover:text-gray-800" }
-                        ),
-                        onclick: move |_| on_view_mode_change.call(ViewMode::Graph),
-                        "Graph"
-                    }
-                }
+                // View mode selection removed - only text view available
             }
 
             div { class: "space-y-3",
-                match view_mode {
-                    ViewMode::Text => rsx! {
-                        div { class: "p-3 bg-gray-50 rounded border font-mono text-sm max-h-20 overflow-auto",
-                            ExpressionText {
-                                pool: pool,
-                                expr_id: expr_id,
-                                highlighted_subexpr: highlighted_subexpr,
-                            }
-                        }
-                    },
-                    ViewMode::Tree => rsx! {
-                        div { class: "p-3 bg-gray-50 rounded border overflow-auto max-h-32",
-                            ExpressionTree {
-                                pool: pool,
-                                expr_id: expr_id,
-                                highlighted_subexpr: highlighted_subexpr,
-                                depth: 0,
-                            }
-                        }
-                    },
-                    ViewMode::Graph => rsx! {
-                        div { class: "p-2 bg-gray-50 rounded border max-h-32 overflow-hidden",
-                            ExpressionTreeGraph {
-                                pool: pool,
-                                expr_id: expr_id,
-                                mini: true,
-                            }
-                        }
-                    },
+                div { class: "p-3 bg-gray-50 rounded border font-mono text-sm max-h-20 overflow-auto",
+                    ExpressionText {
+                        pool: pool,
+                        expr_id: expr_id,
+                        highlighted_subexpr: highlighted_subexpr,
+                    }
                 }
 
                 div { class: "flex gap-4 pt-2 border-t text-xs text-gray-500",
@@ -294,54 +188,6 @@ fn is_binary_operator(op: &str) -> bool {
     )
 }
 
-#[component]
-pub fn ExpressionTree(
-    pool: Signal<Pool>,
-    expr_id: ExprId,
-    highlighted_subexpr: Option<ExprId>,
-    depth: usize,
-) -> Element {
-    let pool_ref = pool.read();
-    let expr = &pool_ref[expr_id];
-    let is_highlighted = highlighted_subexpr == Some(expr_id);
-    let indent = "  ".repeat(depth);
-
-    rsx! {
-        div { class: "font-mono text-sm",
-            div {
-                class: format!("flex items-center gap-2 {}",
-                    if is_highlighted { "bg-yellow-200 px-2 py-1 rounded" } else { "" }
-                ),
-                span { class: "text-gray-400", "{indent}" }
-                span { class: "font-medium", "{get_expr_type_name(expr)}" }
-                span { class: "text-gray-600", "({expr_id:?})" }
-                match expr {
-                    ExprNode::Number(n) => rsx! {
-                        span { class: "text-blue-600", ": {n}" }
-                    },
-                    ExprNode::Variable(name_id) => rsx! {
-                        span { class: "text-green-600", ": {pool_ref.display_name(*name_id)}" }
-                    },
-                    ExprNode::Call { fun, arity, .. } => rsx! {
-                        span { class: "text-purple-600", ": {pool_ref.display_function(*fun)}({arity})" }
-                    },
-                    ExprNode::Struct { name, arity, .. } => rsx! {
-                        span { class: "text-orange-600", ": {pool_ref.display_name(*name)}({arity})" }
-                    },
-                }
-            }
-
-            for child_id in pool_ref.children(expr_id) {
-                ExpressionTree {
-                    pool: pool,
-                    expr_id: child_id,
-                    highlighted_subexpr: highlighted_subexpr,
-                    depth: depth + 1,
-                }
-            }
-        }
-    }
-}
 
 fn calculate_expression_depth(pool: &Pool, expr_id: ExprId) -> usize {
     let children: Vec<_> = pool.children(expr_id).collect();

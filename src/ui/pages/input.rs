@@ -1,5 +1,5 @@
 use super::super::{
-    display_components::{ExpressionCard, PrebuiltRulesets, ViewMode},
+    display_components::{ExpressionCard, PrebuiltRulesets},
     navigation::Page,
     primitives::{ErrorDisplay, UIError},
     state::{InputStateProvider, use_expression_input, use_parsing_state, use_ruleset_input},
@@ -23,7 +23,6 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
     let (ruleset_text, ruleset_error, ruleset_result, _ruleset_state) = use_ruleset_input();
     let (parsing_blocked, _parsing_state) = use_parsing_state();
 
-    let mut view_mode = use_signal(|| ViewMode::Text);
 
     rsx! {
         div { class: styles::SPACE_Y_6,
@@ -43,11 +42,7 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
                     ExpressionCard {
                         pool: pool,
                         expr_id: *expr_id,
-                        view_mode: *view_mode.read(),
                         highlighted_subexpr: None,
-                        on_view_mode_change: move |new_mode| {
-                            view_mode.set(new_mode);
-                        },
                     }
 
                     div { class: "flex gap-4 mt-4",
