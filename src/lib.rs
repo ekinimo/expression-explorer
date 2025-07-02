@@ -14,6 +14,7 @@ pub use pool::*;
 
 pub mod parser;
 pub mod rules;
+pub mod search;
 
 pub mod ui;
 

@@ -550,22 +550,31 @@ fn get_basic_arithmetic_ruleset() -> String {
   mul_numbers       : #a * #b            => [a * b]
   div_numbers       : #a / #b            => [a / b]
 
-  add_assoc         : (?x + ?y) + ?z     => x + (y + z)
-  add_comm          : ?x + ?y            => y + x
-  add_zero_left     : 0 + ?x             => x
-  add_zero_right    : ?x + 0             => x
-  mul_assoc         : (?x * ?y) * ?z     => x * (y * z)
-  mul_one_left      : 1 * ?x             => x
-  mul_one_right     : ?x * 1             => x
-  mul_zero_left     : 0 * ?x             => 0
-  mul_zero_right    : ?x * 0             => 0
-  left_distrib      : ?x * (?y + ?z)     => x * y + x * z
-  right_distrib     : (?x + ?y) * ?z     => x * z + y * z
-
   double            : ?x + ?x            => 2 * x
   incr_coeff        : #a * ?x + ?x       => [a+1] * x
+  add_assoc      : (?x + ?y) + ?z => x + (y + z)
+  add_comm       : ?x + ?y        => y + x
+  add_zero_left  : 0 + ?x         => x
+  add_zero_right : ?x + 0         => x
+  mul_assoc      : (?x * ?y) * ?z => x * (y * z)
+  mul_comm       : ?x * ?y        => y * x
+  mul_one_left   : 1 * ?x         => x
+  mul_one_right  : ?x * 1         => x
+  mul_zero_left  : 0 * ?x         => 0
+  mul_zero_right : ?x * 0         => 0
+  left_distrib   : ?x * (?y + ?z) => x * y + x * z
+  right_distrib  : (?x + ?y) * ?z => x * z + y * z
 
-  back_mul_one_left : ?x                 => 1 * x
+  b_add_assoc      : ?x + (?y + ?z) => (x + y) + z
+  b_add_zero_left  : ?x =>0 + x
+  b_add_zero_right : ?x => x + 0
+  b_mul_assoc      : ?x * (?y * ?z) => (x * y) * z
+  b_mul_one_left   : ?x => 1 * x
+  b_mul_one_right  : ?x => x * 1
+  b_mul_zero_left  : 0  => 0 * new
+  b_mul_zero_right : 0  => new * 0
+  b_left_distrib   : ?x * ?y + ?x * ?z  => x * (y + z)
+  b_right_distrib  :  ?x * ?z + ?y * ?z => (x + y) * z
 
 
 }"#
@@ -577,19 +586,31 @@ fn get_monoid_ruleset() -> String {
   left_identity  : 0 + ?x         => x
   right_identity : ?x + 0         => x
   associativity  : (?x + ?y) + ?z => x + (y + z)
+
+ b_left_identity  : ?x => 0 + x
+ b_right_identity : ?x => x + 0
+ b_associativity  : ?x + (?y + ?z) => (x + y ) + z
 }"#
     .to_string()
 }
 
 fn get_group_ruleset() -> String {
     r#"group {
-  left_identity    : 0 + ?x         => x
-  right_identity   : ?x + 0        => x
-  left_inverse     : -?x + ?x        => 0
-  right_inverse    : ?x + -?x       => 0
-  associativity    : (?x + ?y) + ?z => x + (y + z)
-  inverse_inverse  : -(-(?x))     => x
-  inverse_identity : -(0)        => 0
+  left_identity      : 0 + ?x         => x
+  right_identity     : ?x + 0         => x
+  left_inverse       : -?x + ?x       => 0
+  right_inverse      : ?x + -?x       => 0
+  associativity      : (?x + ?y) + ?z => x + (y + z)
+  inverse_inverse    : -(-(?x))       => x
+  inverse_identity   : -(0)           => 0
+
+  b_left_identity    : ?x             => 0 + x
+  b_right_identity   : ?x             => x + 0
+  b_left_inverse     : 0              => -x + x
+  b_right_inverse    : 0              => x + -x
+  b_associativity    : ?x + (?y + ?z) => (x + y) + z
+  b_inverse_inverse  : ?x             => -(-(x))
+  b_inverse_identity : 0              => -(0)
 
 
 
@@ -610,6 +631,19 @@ fn get_semiring_ruleset() -> String {
   mul_zero_right : ?x * 0         => 0
   left_distrib   : ?x * (?y + ?z) => x * y + x * z
   right_distrib  : (?x + ?y) * ?z => x * z + y * z
+
+  b_add_assoc      : ?x + (?y + ?z) => (x + y) + z
+  b_add_zero_left  : ?x =>0 + x
+  b_add_zero_right : ?x => x + 0
+  b_mul_assoc      : ?x * (?y * ?z) => (x * y) * z
+  b_mul_one_left   : ?x => 1 * x
+  b_mul_one_right  : ?x => x * 1
+  b_mul_zero_left  : 0  => 0 * new
+  b_mul_zero_right : 0  => new * 0
+  b_left_distrib   : ?x * ?y + ?x * ?z  => x * (y + z)
+  b_right_distrib  :  ?x * ?z + ?y * ?z => (x + y) * z
+
+
 }"#
     .to_string()
 }

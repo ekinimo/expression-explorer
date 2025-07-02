@@ -448,8 +448,12 @@ pub fn TransformationGraph(
     pool: Signal<crate::Pool>,
     current_expr: Option<crate::ExprId>,
     #[props(default = None)] hovered_expr: Option<crate::ExprId>,
+    #[props(default = None)] hovered_edge: Option<(crate::ExprId, crate::ExprId, crate::RuleId)>,
     #[props(default = None)] on_node_click: Option<EventHandler<crate::ExprId>>,
+    #[props(default = None)] on_edge_hover: Option<EventHandler<Option<(crate::ExprId, crate::ExprId, crate::RuleId)>>>,
 ) -> Element {
+    let _svg_content = use_signal(|| String::new());
+    
     if let Some(expr_id) = current_expr {
         let pool_ref = pool.read();
         let mut nodes = vec![];
@@ -487,19 +491,8 @@ pub fn TransformationGraph(
                 
                 group_to_representative.insert(group_id, representative);
                 
-                // Create label showing all expressions in the group
-                let label = if group_exprs.len() == 1 {
-                    pool_ref.display_with_children(representative)
-                } else {
-                    format!("{{ {} }}", 
-                        group_exprs.iter()
-                            .take(3) // Show max 3 expressions
-                            .map(|&e| pool_ref.display_with_children(e))
-                            .collect::<Vec<_>>()
-                            .join(", ") + 
-                        if group_exprs.len() > 3 { " ..." } else { "" }
-                    )
-                };
+                // Create label showing only the representative expression
+                let label = pool_ref.display_with_children(representative);
                 
                 let mut style = if current_group == Some(group_id) {
                     NodeStyle::primary()
@@ -523,13 +516,18 @@ pub fn TransformationGraph(
             }
         }
         
-        // Create edges between groups
+        // Create edges between groups and store metadata
+        let mut edge_metadata = std::collections::HashMap::new();
         for &from_group in &relevant_groups {
             if let Some(outgoing) = pool_ref.equivalence_outgoing.get(&from_group) {
                 for &(to_group, rule_id) in outgoing {
                     if let (Some(&from_repr), Some(&to_repr)) = 
                         (group_to_representative.get(&from_group), group_to_representative.get(&to_group)) {
                         let rule_name = pool_ref.display_name(pool_ref[rule_id].name);
+                        
+                        // Store metadata for hover functionality
+                        edge_metadata.insert((from_repr, to_repr), rule_id);
+                        
                         edges.push(GraphEdge {
                             from: from_repr,
                             to: to_repr,
@@ -541,16 +539,60 @@ pub fn TransformationGraph(
         }
         
         rsx! {
-            div { class: "h-full w-full overflow-auto p-4",
-                Graph {
-                    nodes: nodes,
-                    edges: edges,
-                    vertical: true, // Top-down layout
-                    title: "Equivalence Classes Graph".to_string(),
-                    show_header: true,
-                    empty_message: Some("No transformations found. Apply rules to see the graph.".to_string()),
-                    on_node_click: on_node_click,
-                    on_node_hover: None,
+            div { class: "h-full w-full flex flex-col",
+                // Export button and header
+                div { class: "flex items-center justify-between p-4 border-b",
+                    h3 { class: "text-lg font-semibold", "Equivalence Classes Graph" }
+                    // TODO: Add SVG export functionality
+                }
+                
+                // Graph content
+                div { class: "flex-1 overflow-auto p-4 relative",
+                    Graph {
+                        nodes: nodes.clone(),
+                        edges: edges.clone(),
+                        vertical: true,
+                        title: "".to_string(), // Title already in header
+                        show_header: false,
+                        empty_message: Some("No transformations found. Apply rules to see the graph.".to_string()),
+                        on_node_click: on_node_click,
+                        on_node_hover: None,
+                    }
+                    
+                    // Edge hover tooltip
+                    if let Some((from, to, rule_id)) = hovered_edge {
+                        div {
+                            class: "absolute bg-gray-900 text-white p-3 rounded shadow-lg text-sm z-50",
+                            style: "top: 20px; right: 20px; max-width: 300px;",
+                            
+                            div { class: "font-semibold mb-2", 
+                                "Rule: {pool_ref.display_name(pool_ref[rule_id].name)}" 
+                            }
+                            
+                            div { class: "space-y-1 text-xs",
+                                div { 
+                                    span { class: "text-gray-400", "From: " }
+                                    span { "{pool_ref.display_with_children(from)}" }
+                                }
+                                div { 
+                                    span { class: "text-gray-400", "To: " }
+                                    span { "{pool_ref.display_with_children(to)}" }
+                                }
+                                
+                                // Show the rule pattern and action
+                                div { class: "mt-2 pt-2 border-t border-gray-700",
+                                    div { class: "text-gray-400", "Pattern:" }
+                                    div { class: "font-mono", 
+                                        "{pool_ref.display_with_children(pool_ref[rule_id].pattern)}" 
+                                    }
+                                    div { class: "text-gray-400 mt-1", "Action:" }
+                                    div { class: "font-mono", 
+                                        "{pool_ref.display_with_children(pool_ref[rule_id].action)}" 
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

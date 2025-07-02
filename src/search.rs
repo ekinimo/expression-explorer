@@ -1,8 +1,8 @@
-use crate::{DisplayNode, EquivalenceGroupId, ExprId, Pool, rules::RuleId};
+use crate::{DisplayNode, EquivalenceGroupId, ExprId, Pool, RuleId};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SearchPath {
     pub steps: Vec<(ExprId, RuleId, ExprId)>,
     pub cost: f64,
@@ -77,7 +77,7 @@ impl SearchEngine {
 
     pub fn bounded_bfs(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         target_expr: Option<ExprId>,
     ) -> Vec<SearchPath> {
@@ -86,7 +86,10 @@ impl SearchEngine {
         let mut paths = Vec::new();
         let mut nodes_explored = 0;
 
-        let start_group = pool.get_equivalence_group(start_expr).unwrap();
+        let start_group = match pool.get_equivalence_group(start_expr) {
+            Some(group) => group,
+            None => return vec![], // No equivalence group found
+        };
         queue.push_back(SearchNode {
             expr_id: start_expr,
             group_id: start_group,
@@ -119,6 +122,7 @@ impl SearchEngine {
                 }
             }
 
+            // First try existing transformations
             if let Some(outgoing) = pool.get_outgoing_transformations(current.expr_id) {
                 for &(next_expr, rule) in outgoing {
                     let next_group = pool.get_equivalence_group(next_expr).unwrap();
@@ -152,6 +156,46 @@ impl SearchEngine {
                     visited.insert(next_group);
                 }
             }
+            
+            // Then apply rules to generate new expressions
+            let matches = pool.find_matches(current.expr_id);
+            for match_ in matches {
+                if let Some(new_expr) = pool.apply_rule(&match_) {
+                    pool.update_equivalence_groups(new_expr);
+                    let new_group = match pool.get_equivalence_group(new_expr) {
+                        Some(group) => group,
+                        None => continue,
+                    };
+                    
+                    if visited.contains(&new_group) {
+                        continue;
+                    }
+                    
+                    let current_chain: Vec<_> = current
+                        .path
+                        .iter()
+                        .map(|(from, rule, _)| (pool.get_equivalence_group(*from).unwrap(), *rule))
+                        .collect();
+
+                    if !pool.should_apply_rule(current.group_id, match_.rule_id, new_group, &current_chain) {
+                        continue;
+                    }
+                    
+                    let mut new_path = current.path.clone();
+                    new_path.push((current.expr_id, match_.rule_id, new_expr));
+                    
+                    queue.push_back(SearchNode {
+                        expr_id: new_expr,
+                        group_id: new_group,
+                        path: new_path,
+                        cost: current.cost + 1.0,
+                        depth: current.depth + 1,
+                        heuristic_score: 0.0,
+                    });
+                    
+                    visited.insert(new_group);
+                }
+            }
 
             if target_expr.is_none() && current.depth > 0 {
                 paths.push(SearchPath {
@@ -167,7 +211,7 @@ impl SearchEngine {
 
     pub fn bounded_dijkstra(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         target_expr: Option<ExprId>,
         cost_fn: impl Fn(&Pool, RuleId, ExprId, ExprId) -> f64,
@@ -178,7 +222,10 @@ impl SearchEngine {
         let mut result_paths = Vec::new();
         let mut nodes_explored = 0;
 
-        let start_group = pool.get_equivalence_group(start_expr).unwrap();
+        let start_group = match pool.get_equivalence_group(start_expr) {
+            Some(group) => group,
+            None => return vec![], // No equivalence group found
+        };
         heap.push(SearchNode {
             expr_id: start_expr,
             group_id: start_group,
@@ -218,6 +265,7 @@ impl SearchEngine {
                 }
             }
 
+            // First try existing transformations
             if let Some(outgoing) = pool.get_outgoing_transformations(current.expr_id) {
                 for &(next_expr, rule) in outgoing {
                     let next_group = pool.get_equivalence_group(next_expr).unwrap();
@@ -257,6 +305,52 @@ impl SearchEngine {
                     });
                 }
             }
+            
+            // Then apply rules to generate new expressions
+            let matches = pool.find_matches(current.expr_id);
+            for match_ in matches {
+                if let Some(new_expr) = pool.apply_rule(&match_) {
+                    pool.update_equivalence_groups(new_expr);
+                    let new_group = match pool.get_equivalence_group(new_expr) {
+                        Some(group) => group,
+                        None => continue,
+                    };
+                    
+                    let current_chain: Vec<_> = current
+                        .path
+                        .iter()
+                        .map(|(from, rule, _)| (pool.get_equivalence_group(*from).unwrap(), *rule))
+                        .collect();
+
+                    if !pool.should_apply_rule(current.group_id, match_.rule_id, new_group, &current_chain) {
+                        continue;
+                    }
+
+                    let edge_cost = cost_fn(pool, match_.rule_id, current.expr_id, new_expr);
+                    let new_cost = current.cost + edge_cost;
+
+                    if let Some(&best_dist) = distances.get(&new_group) {
+                        if new_cost >= best_dist {
+                            continue;
+                        }
+                    }
+
+                    let mut new_path = current.path.clone();
+                    new_path.push((current.expr_id, match_.rule_id, new_expr));
+
+                    distances.insert(new_group, new_cost);
+                    paths.insert(new_group, new_path.clone());
+
+                    heap.push(SearchNode {
+                        expr_id: new_expr,
+                        group_id: new_group,
+                        path: new_path,
+                        cost: new_cost,
+                        depth: current.depth + 1,
+                        heuristic_score: 0.0,
+                    });
+                }
+            }
         }
 
         if target_expr.is_none() {
@@ -277,7 +371,7 @@ impl SearchEngine {
 
     pub fn heuristic_search(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         target_expr: ExprId,
         heuristic_fn: impl Fn(&Pool, ExprId, ExprId) -> f64,
@@ -289,8 +383,14 @@ impl SearchEngine {
         let mut came_from: HashMap<EquivalenceGroupId, (ExprId, RuleId, ExprId)> = HashMap::new();
         let mut nodes_explored = 0;
 
-        let start_group = pool.get_equivalence_group(start_expr).unwrap();
-        let target_group = pool.get_equivalence_group(target_expr).unwrap();
+        let start_group = match pool.get_equivalence_group(start_expr) {
+            Some(group) => group,
+            None => return None, // No equivalence group found
+        };
+        let target_group = match pool.get_equivalence_group(target_expr) {
+            Some(group) => group,
+            None => return None, // No equivalence group found
+        };
 
         let h_start = heuristic_fn(pool, start_expr, target_expr);
         g_score.insert(start_group, 0.0);
@@ -382,7 +482,7 @@ impl SearchEngine {
 
     pub fn random_search(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         num_walks: usize,
     ) -> Vec<SearchPath> {
@@ -393,51 +493,78 @@ impl SearchEngine {
             let mut path = Vec::new();
             let mut visited_groups = HashSet::new();
 
-            let start_group = pool.get_equivalence_group(start_expr).unwrap();
+            let start_group = match pool.get_equivalence_group(start_expr) {
+                Some(group) => group,
+                None => continue, // Skip this walk if no equivalence group
+            };
             visited_groups.insert(start_group);
 
-            for depth in 0..self.config.max_depth {
+            for _depth in 0..self.config.max_depth {
+                let mut all_moves = Vec::new();
+                
+                // First collect existing transformations
                 if let Some(outgoing) = pool.get_outgoing_transformations(current_expr) {
-                    if outgoing.is_empty() {
-                        break;
+                    for &(next_expr, rule) in outgoing {
+                        let current_group = pool.get_equivalence_group(current_expr).unwrap();
+                        let next_group = pool.get_equivalence_group(next_expr).unwrap();
+
+                        if visited_groups.contains(&next_group) {
+                            continue;
+                        }
+
+                        let current_chain: Vec<_> = path
+                            .iter()
+                            .map(|(from, rule, _)| {
+                                (pool.get_equivalence_group(*from).unwrap(), *rule)
+                            })
+                            .collect();
+
+                        if pool.should_apply_rule(current_group, rule, next_group, &current_chain) {
+                            all_moves.push((next_expr, rule));
+                        }
                     }
+                }
+                
+                // Then apply rules to generate new moves
+                let matches = pool.find_matches(current_expr);
+                for match_ in matches {
+                    if let Some(new_expr) = pool.apply_rule(&match_) {
+                        pool.update_equivalence_groups(new_expr);
+                        let current_group = pool.get_equivalence_group(current_expr).unwrap();
+                        let new_group = match pool.get_equivalence_group(new_expr) {
+                            Some(group) => group,
+                            None => continue,
+                        };
 
-                    let valid_moves: Vec<_> = outgoing
-                        .iter()
-                        .filter(|&&(next_expr, rule)| {
-                            let current_group = pool.get_equivalence_group(current_expr).unwrap();
-                            let next_group = pool.get_equivalence_group(next_expr).unwrap();
+                        if visited_groups.contains(&new_group) {
+                            continue;
+                        }
 
-                            if visited_groups.contains(&next_group) {
-                                return false;
-                            }
+                        let current_chain: Vec<_> = path
+                            .iter()
+                            .map(|(from, rule, _)| {
+                                (pool.get_equivalence_group(*from).unwrap(), *rule)
+                            })
+                            .collect();
 
-                            let current_chain: Vec<_> = path
-                                .iter()
-                                .map(|(from, rule, _)| {
-                                    (pool.get_equivalence_group(*from).unwrap(), *rule)
-                                })
-                                .collect();
-
-                            pool.should_apply_rule(current_group, rule, next_group, &current_chain)
-                        })
-                        .collect();
-
-                    if valid_moves.is_empty() {
-                        break;
+                        if pool.should_apply_rule(current_group, match_.rule_id, new_group, &current_chain) {
+                            all_moves.push((new_expr, match_.rule_id));
+                        }
                     }
+                }
 
-                    let &(next_expr, rule) = valid_moves[self.rng.usize(0..valid_moves.len())];
-                    let next_group = pool.get_equivalence_group(next_expr).unwrap();
+                if all_moves.is_empty() {
+                    break;
+                }
 
-                    path.push((current_expr, rule, next_expr));
-                    visited_groups.insert(next_group);
-                    current_expr = next_expr;
+                let &(next_expr, rule) = &all_moves[self.rng.usize(0..all_moves.len())];
+                let next_group = pool.get_equivalence_group(next_expr).unwrap();
 
-                    if self.rng.f64() < self.config.random_walk_probability {
-                        break;
-                    }
-                } else {
+                path.push((current_expr, rule, next_expr));
+                visited_groups.insert(next_group);
+                current_expr = next_expr;
+
+                if self.rng.f64() < self.config.random_walk_probability {
                     break;
                 }
             }
@@ -456,14 +583,17 @@ impl SearchEngine {
 
     pub fn beam_search(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         evaluation_fn: impl Fn(&Pool, ExprId, &[ExprId]) -> f64,
     ) -> Vec<SearchPath> {
         let mut current_beam = Vec::new();
         let mut all_paths = Vec::new();
 
-        let start_group = pool.get_equivalence_group(start_expr).unwrap();
+        let start_group = match pool.get_equivalence_group(start_expr) {
+            Some(group) => group,
+            None => return vec![], // No equivalence group found
+        };
         current_beam.push(SearchNode {
             expr_id: start_expr,
             group_id: start_group,
@@ -548,7 +678,7 @@ impl SearchEngine {
 
     pub fn combined_search(
         &mut self,
-        pool: &Pool,
+        pool: &mut Pool,
         start_expr: ExprId,
         target_expr: Option<ExprId>,
     ) -> Vec<SearchPath> {

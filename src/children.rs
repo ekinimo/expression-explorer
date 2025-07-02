@@ -201,14 +201,31 @@ where
     where
         Self: Index<std::ops::Range<Id>, Output = [Self::Tree]>,
     {
-        let len = self.length(node_id);
+        // We need to calculate the total size of the expression tree
+        let total_size = self.calculate_tree_size(node_id);
         let node_idx: usize = node_id.into();
 
-        let start_idx = (node_idx + 1).saturating_sub(len);
+        let start_idx = (node_idx + 1).saturating_sub(total_size);
 
         let start = Id::from(start_idx);
         let end = Id::from(node_idx + 1);
         &self[start..end]
+    }
+    
+    fn calculate_tree_size(&self, node_id: Id) -> usize {
+        let node = self.get_node(node_id);
+        match node.last() {
+            Some(_last) if node.arity() > 0 => {
+                // The tree includes this node plus all its children's trees
+                let mut total = 1;
+                let children: Vec<Id> = self.children(node_id).collect();
+                for child in children {
+                    total += self.calculate_tree_size(child);
+                }
+                total
+            }
+            _ => 1,
+        }
     }
 
     fn get(&self, node_id: Id) -> Option<&<Self as Index<Id>>::Output> {

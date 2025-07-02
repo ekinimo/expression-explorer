@@ -346,7 +346,7 @@ impl Pool {
         &self.equivalence_groups
     }
 
-    fn update_equivalence_groups(&mut self, new_expr: ExprId) {
+    pub fn update_equivalence_groups(&mut self, new_expr: ExprId) {
         for (&existing_expr, &group_id) in &self.expr_to_group.clone() {
             if self.expr_eq(new_expr, existing_expr) {
                 if let Some(group) = self.equivalence_groups.get_mut(group_id.0) {
