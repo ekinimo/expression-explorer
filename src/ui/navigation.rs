@@ -31,7 +31,7 @@ impl Page {
 
 #[component]
 pub fn NavigationBar(current_page: Signal<Page>, on_page_change: EventHandler<Page>) -> Element {
-    let pages = [Page::Input, Page::Explorer, Page::Debug, Page::HowTo];
+    let pages = [Page::Input, Page::Explorer, Page::HowTo];
 
     rsx! {
         nav { class: styles::NAV_BAR,

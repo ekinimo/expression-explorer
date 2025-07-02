@@ -1,6 +1,7 @@
 use super::styles;
 use crate::{
     Action, ActionId, Children, DisplayNode, ExprId, ExprNode, Pattern, PatternId, Pool, RuleId,
+    RulesetId,
 };
 use dioxus::prelude::*;
 
@@ -646,6 +647,80 @@ fn get_semiring_ruleset() -> String {
 
 }"#
     .to_string()
+}
+
+#[component]
+pub fn ParsedRulesetsList(
+    pool: Signal<Pool>,
+    parsed_rulesets: Vec<RulesetId>,
+    selected_ruleset: Option<RulesetId>,
+    on_ruleset_selected: EventHandler<RulesetId>,
+) -> Element {
+    let pool_ref = pool.read();
+    
+    if parsed_rulesets.is_empty() {
+        return rsx! {
+            div { class: "text-sm text-gray-500 italic p-4",
+                "No rulesets parsed yet. Parse a ruleset above to see it here."
+            }
+        };
+    }
+    
+    rsx! {
+        div { class: "space-y-2",
+            h3 { class: "text-sm font-medium text-gray-700", "Parsed Rulesets" }
+            div { class: "space-y-2 max-h-48 overflow-y-auto",
+                for ruleset_id in parsed_rulesets {
+                    div {
+                        key: "{ruleset_id:?}",
+                        class: if selected_ruleset == Some(ruleset_id) {
+                            "p-3 bg-blue-100 border-2 border-blue-400 rounded-lg cursor-pointer transition-colors"
+                        } else {
+                            "p-3 bg-gray-50 border-2 border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                        },
+                        onclick: move |_| {
+                            on_ruleset_selected.call(ruleset_id);
+                        },
+                        
+                        div { class: "flex items-center justify-between",
+                            div { class: "flex items-center gap-3",
+                                span { class: "font-medium text-gray-800",
+                                    "{pool_ref.display_name(pool_ref[ruleset_id].name)}"
+                                }
+                                span { class: "text-xs text-gray-500",
+                                    "({pool_ref.get_ruleset_rule_count(ruleset_id)} rules)"
+                                }
+                            }
+                            if selected_ruleset == Some(ruleset_id) {
+                                span { class: "text-sm text-blue-600 font-medium", "✓ Selected" }
+                            }
+                        }
+                        
+                        if selected_ruleset == Some(ruleset_id) {
+                            div { class: "mt-2 text-xs text-gray-600",
+                                "Rules: ",
+                                {
+                                    let rules: Vec<_> = pool_ref.get_ruleset_rules(ruleset_id).take(5).collect();
+                                    let total_count = pool_ref.get_ruleset_rule_count(ruleset_id);
+                                    rsx! {
+                                        for (i, rule) in rules.iter().enumerate() {
+                                            if i > 0 { ", " }
+                                            span { class: "font-mono",
+                                                "{pool_ref.display_name(rule.name)}"
+                                            }
+                                        }
+                                        if total_count > 5 {
+                                            span { ", ..." }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn get_expr_type_name(expr: &ExprNode) -> &'static str {

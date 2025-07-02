@@ -60,6 +60,8 @@ pub struct InputState {
     pub ruleset_error: Option<UIError>,
     pub ruleset_result: Option<RulesetId>,
     pub parsing_blocked: bool,
+    pub selected_ruleset: Option<RulesetId>,
+    pub parsed_rulesets: Vec<RulesetId>,
 }
 
 impl Default for InputState {
@@ -74,6 +76,8 @@ impl Default for InputState {
             ruleset_error: None,
             ruleset_result: None,
             parsing_blocked: false,
+            selected_ruleset: None,
+            parsed_rulesets: Vec::new(),
         }
     }
 }
