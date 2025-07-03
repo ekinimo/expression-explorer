@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::children::Children;
 use crate::idx::*;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::ops::Index;
 
@@ -41,7 +42,7 @@ impl Iterator for SiblingIterator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Location {
     pub start: usize,
     pub end: usize,
@@ -57,7 +58,7 @@ impl Location {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Provenance {
     Parsed(Location),
     Rule {
@@ -67,7 +68,7 @@ pub enum Provenance {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Coordinate {
     pub path: Vec<usize>,
 }
@@ -112,7 +113,7 @@ impl std::fmt::Display for Coordinate {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pool {
     pub exprs: Vec<ExprNode>,
     pub expr_ends: std::collections::BTreeSet<usize>,

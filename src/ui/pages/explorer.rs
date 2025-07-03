@@ -2,7 +2,7 @@ use super::super::{
     display_components::CompactExpressionCard,
     primitives::TransformationGraph,
 };
-use crate::{ActionId, Children, DisplayNode, ExprId, PatternId, Pool, rules::Match, search::{SearchEngine, SearchConfig, SearchPath}};
+use crate::{ActionId, Children, DisplayNode, ExprId, PatternId, Pool, RuleId, rules::Match, search::{SearchEngine, SearchConfig, SearchPath}};
 use dioxus::prelude::*;
 
 #[component]
@@ -21,6 +21,7 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
     let mut rules_panel_collapsed = use_signal(|| false);
     let mut hovered_rule_index = use_signal(|| None::<usize>);
     let _show_search_panel = use_signal(|| false);
+    let mut last_applied_rule = use_signal(|| None::<(ExprId, ExprId, RuleId, Match)>);
 
     use_effect(move || {
         if let Some(expr_id) = current_expr.read().as_ref() {
@@ -46,6 +47,59 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
                                 on_change: move |new_expr| {
                                     current_expr.set(Some(new_expr));
                                 }
+                            }
+                        }
+                        
+                        // Pool management buttons
+                        div { class: "flex gap-2",
+                            // Import pool button
+                            label {
+                                class: format!("{} text-sm", super::super::styles::BTN_SECONDARY),
+                                "for": "pool-upload-explorer",
+                                "📁 Import Pool"
+                            }
+                            input {
+                                id: "pool-upload-explorer",
+                                r#type: "file",
+                                accept: ".json",
+                                class: "hidden",
+                                onchange: move |evt| {
+                                    spawn(async move {
+                                        if let Some((_filename, contents)) = super::super::file_utils::read_file_from_event(&evt).await {
+                                            match serde_json::from_str::<crate::Pool>(&contents) {
+                                                Ok(imported_pool) => {
+                                                    pool.set(imported_pool);
+                                                    // Reset current expression to the latest one
+                                                    let pool_ref = pool.read();
+                                                    if !pool_ref.exprs.is_empty() {
+                                                        current_expr.set(Some(ExprId(pool_ref.exprs.len() - 1)));
+                                                    }
+                                                    log::info!("Pool imported successfully");
+                                                }
+                                                Err(e) => {
+                                                    log::error!("Failed to import pool: {}", e);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                            
+                            // Export pool button
+                            button {
+                                class: format!("{} text-sm", super::super::styles::BTN_SECONDARY),
+                                onclick: move |_| {
+                                    let pool_ref = pool.read();
+                                    match serde_json::to_string_pretty(&*pool_ref) {
+                                        Ok(json_content) => {
+                                            super::super::file_utils::download_text_file("pool_export.json", &json_content);
+                                        }
+                                        Err(e) => {
+                                            log::error!("Failed to serialize pool: {}", e);
+                                        }
+                                    }
+                                },
+                                "💾 Export Pool"
                             }
                         }
 
@@ -127,6 +181,7 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
                         TransformationGraph {
                             pool: pool,
                             current_expr: Some(*expr_id),
+                            last_applied_rule: last_applied_rule.read().clone(),
                             on_node_click: Some(EventHandler::new(move |clicked_expr: ExprId| {
                                 current_expr.set(Some(clicked_expr));
                             })),
@@ -149,9 +204,15 @@ pub fn ExplorerPage(pool: Signal<Pool>) -> Element {
                                         highlighted_subexpr.set(None);
                                     }
                                 },
-                                on_apply_rule: move |match_| {
+                                on_apply_rule: move |match_: Match| {
+                                    let from_expr = match_.root;
+                                    let rule_id = match_.rule_id;
+                                    let match_clone = match_.clone();
+                                    
                                     let mut p = pool.write();
                                     if let Some(new_expr) = p.apply_rule(&match_) {
+                                        // Track the last applied rule with the match info
+                                        last_applied_rule.set(Some((from_expr, new_expr, rule_id, match_clone)));
                                         current_expr.set(Some(new_expr));
                                     }
                                 },
@@ -548,15 +609,15 @@ fn SearchPanel(
                         
                         let mut engine = SearchEngine::new(config);
                         let paths = match strategy.as_str() {
-                            "bfs" => engine.bounded_bfs(&mut *pool_write, source, target),
+                            "bfs" => engine.bounded_bfs(&mut pool_write, source, target),
                             "dijkstra" => engine.bounded_dijkstra(
-                                &mut *pool_write,
+                                &mut pool_write,
                                 source, 
                                 target,
                                 |_, _, _, _| 1.0
                             ),
                             "beam" => {
-                                engine.beam_search(&mut *pool_write, source, |pool, expr, _path| {
+                                engine.beam_search(&mut pool_write, source, |pool, expr, _path| {
                                     if let Some(t) = target {
                                         if pool.expr_eq(expr, t) { 1000.0 } else { 1.0 }
                                     } else {
@@ -564,7 +625,7 @@ fn SearchPanel(
                                     }
                                 })
                             },
-                            "random" => engine.random_search(&mut *pool_write, source, 10),
+                            "random" => engine.random_search(&mut pool_write, source, 10),
                             _ => vec![],
                         };
                         drop(pool_write);

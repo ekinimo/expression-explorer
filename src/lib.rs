@@ -58,8 +58,8 @@ impl Pool {
                     if fun1 != fun2 || len1 != len2 {
                         return false;
                     }
-                    let children1: Vec<_> = self.children(node1_id).collect();
-                    let children2: Vec<_> = self.children(node2_id).collect();
+                    let children1 = self.children(node1_id);
+                    let children2 = self.children(node2_id);
 
                     for (child1, child2) in children1.into_iter().zip(children2.into_iter()) {
                         stack.push((child1, child2));

@@ -10,7 +10,7 @@
             background-color: #f3f4f6;
         }
     </style>
-<link rel="preload" as="script" href="/expression-explorer/assets/expression-explorer-d040703208dcfebc.js" crossorigin><link rel="preload" as="fetch" type="application/wasm" href="/expression-explorer/assets/expression-explorer_bg-3cffc159f973064c.wasm" crossorigin></head>
+<link rel="preload" as="script" href="/expression-explorer/assets/expression-explorer-629143f8ff837eef.js" crossorigin><link rel="preload" as="fetch" type="application/wasm" href="/expression-explorer/assets/expression-explorer_bg-1fc166e0ee3a2479.wasm" crossorigin></head>
 <body>
     <div id="main"></div>
     <script type="module">
@@ -19,9 +19,9 @@
     </script>
 <script>
             // We can't use a module script here because we need to start the script immediately when streaming
-            import("/expression-explorer/assets/expression-explorer-d040703208dcfebc.js").then(
+            import("/expression-explorer/assets/expression-explorer-629143f8ff837eef.js").then(
                 ({ default: init }) => {
-                init("/expression-explorer/assets/expression-explorer_bg-3cffc159f973064c.wasm").then((wasm) => {
+                init("/expression-explorer/assets/expression-explorer_bg-1fc166e0ee3a2479.wasm").then((wasm) => {
                     if (wasm.__wbindgen_start == undefined) {
                     wasm.main();
                     }

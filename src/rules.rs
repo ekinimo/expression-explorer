@@ -3,16 +3,17 @@ use crate::{
     Action, ActionId, ComputeOp, ExprId, ExprNode, FunctionId, NameId, Pattern, PatternId, Pool,
     RuleId,
 };
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CapturedValue {
     Expression(ExprId),
     Function(FunctionId),
     StructName(NameId),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Match {
     pub root: ExprId,
     pub offset: ExprId,
@@ -240,10 +241,9 @@ impl Pool {
         let target_end = root_slice_len.saturating_sub(relative_pos);
         let target_start = target_end.saturating_sub(target_slice_len);
 
-        let replacement_nodes: Vec<_> = replacement_vec.into_iter().collect();
-        let replacement_len = replacement_nodes.len();
+        let replacement_len = replacement_vec.len();
 
-        root_vec.splice(target_start..target_end, replacement_nodes);
+        root_vec.splice(target_start..target_end, replacement_vec);
 
         let size_delta = replacement_len as i32 - target_slice_len as i32;
         if size_delta != 0 {
@@ -316,7 +316,7 @@ impl Pool {
 
             Action::Call { fun, arity, .. } => {
                 let start_pos = output.len();
-                let children: Vec<_> = self.children(action_id).collect();
+                let children: Box<[_]> = self.children(action_id).collect();
                 for child_id in children.into_iter().rev() {
                     self.build_action_simple(child_id, captures, output);
                 }
@@ -330,7 +330,7 @@ impl Pool {
 
             Action::Struct { name, arity, .. } => {
                 let start_pos = output.len();
-                let children: Vec<_> = self.children(action_id).collect();
+                let children: Box<_> = self.children(action_id).collect();
                 for child_id in children.into_iter().rev() {
                     self.build_action_simple(child_id, captures, output);
                 }
@@ -345,7 +345,7 @@ impl Pool {
             Action::VarCallName { var, arity, .. } => {
                 if let Some(CapturedValue::Function(fun)) = captures.get(&var) {
                     let start_pos = output.len();
-                    let children: Vec<_> = self.children(action_id).collect();
+                    let children: Box<_> = self.children(action_id).collect();
                     for child_id in children.into_iter().rev() {
                         self.build_action_simple(child_id, captures, output);
                     }
@@ -368,7 +368,7 @@ impl Pool {
             Action::VarStructName { var, arity, .. } => {
                 if let Some(CapturedValue::StructName(name)) = captures.get(&var) {
                     let start_pos = output.len();
-                    let children: Vec<_> = self.children(action_id).collect();
+                    let children: Box<_> = self.children(action_id).collect();
                     for child_id in children.into_iter().rev() {
                         self.build_action_simple(child_id, captures, output);
                     }
@@ -389,7 +389,7 @@ impl Pool {
             }
 
             Action::Compute { op, arity, .. } => {
-                let children: Vec<_> = self.children(action_id).collect();
+                let children: Box<_> = self.children(action_id).collect();
                 if children.len() == arity {
                     let mut args = Vec::new();
                     for child_id in children {

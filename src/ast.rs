@@ -1,6 +1,7 @@
 use crate::idx::*;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Copy, Clone, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ExprNode {
     Number(i32),
     Variable(NameId),
@@ -16,7 +17,7 @@ pub enum ExprNode {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Function {
     Add,
     Subtract,
@@ -28,7 +29,7 @@ pub enum Function {
     Custom(NameId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Pattern {
     Number(i32),
     Variable(NameId),
@@ -56,7 +57,7 @@ pub enum Pattern {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub enum Action {
     Number(i32),
     Variable(NameId),
@@ -88,7 +89,7 @@ pub enum Action {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub enum ComputeOp {
     Add,
     Subtract,
@@ -98,14 +99,14 @@ pub enum ComputeOp {
     Negate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Rule {
     pub name: NameId,
     pub pattern: PatternId,
     pub action: ActionId,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Ruleset {
     pub name: NameId,
     pub rules_start: usize,

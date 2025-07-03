@@ -1,7 +1,8 @@
 use super::styles;
 use dioxus::prelude::*;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Page {
     Input,
     Explorer,

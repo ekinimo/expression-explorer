@@ -218,8 +218,8 @@ where
             Some(_last) if node.arity() > 0 => {
                 // The tree includes this node plus all its children's trees
                 let mut total = 1;
-                let children: Vec<Id> = self.children(node_id).collect();
-                for child in children {
+                //let children: Vec<Id> = self.children(node_id).collect();
+                for child in self.children(node_id) {
                     total += self.calculate_tree_size(child);
                 }
                 total

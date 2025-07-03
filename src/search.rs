@@ -383,14 +383,8 @@ impl SearchEngine {
         let mut came_from: HashMap<EquivalenceGroupId, (ExprId, RuleId, ExprId)> = HashMap::new();
         let mut nodes_explored = 0;
 
-        let start_group = match pool.get_equivalence_group(start_expr) {
-            Some(group) => group,
-            None => return None, // No equivalence group found
-        };
-        let target_group = match pool.get_equivalence_group(target_expr) {
-            Some(group) => group,
-            None => return None, // No equivalence group found
-        };
+        let start_group = pool.get_equivalence_group(start_expr)?;
+        let target_group = pool.get_equivalence_group(target_expr)?;
 
         let h_start = heuristic_fn(pool, start_expr, target_expr);
         g_score.insert(start_group, 0.0);

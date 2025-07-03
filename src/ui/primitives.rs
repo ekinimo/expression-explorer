@@ -1,5 +1,6 @@
 use crate::DisplayNode;
 use dioxus::prelude::*;
+use serde::{Serialize, Deserialize};
 
 pub trait Styled {
     fn base_class() -> &'static str;
@@ -204,9 +205,10 @@ use layout::{
     core::color::Color,
     core::geometry::Point,
     core::style::StyleAttr,
-    std_shapes::shapes::{Arrow, Element as LayoutElement, ShapeKind},
+    std_shapes::shapes::{Arrow, Element as LayoutElement, ShapeKind, RecordDef},
     topo::layout::VisualGraph,
 };
+
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -285,6 +287,7 @@ pub struct GraphNode<T: Clone> {
     pub id: T,
     pub label: String,
     pub style: NodeStyle,
+    pub shape: Option<ShapeKind>,
     pub properties: Option<String>,
 }
 
@@ -294,6 +297,7 @@ impl<T: Clone + PartialEq> PartialEq for GraphNode<T> {
             && self.label == other.label
             && self.style == other.style
             && self.properties == other.properties
+        // Note: shape is not compared because ShapeKind doesn't implement PartialEq
     }
 }
 
@@ -317,8 +321,10 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
     #[props(default = false)] vertical: bool,
     #[props(default = true)] show_header: bool,
     #[props(default = "Graph".to_string())] title: String,
+    #[props(default = None)] last_applied_edge: Option<(T, T)>,
     on_node_click: Option<EventHandler<T>>,
     on_node_hover: Option<EventHandler<T>>,
+    on_edge_hover: Option<EventHandler<Option<(usize, T, T)>>>,
     empty_message: Option<String>,
 ) -> Element {
     let mut tooltip_content = use_signal(|| None::<(String, Point)>);
@@ -332,7 +338,7 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
     let mut node_handles = HashMap::new();
 
     for node in &nodes {
-        let shape = ShapeKind::new_box(&node.label);
+        let shape = node.shape.clone().unwrap_or_else(|| ShapeKind::new_box(&node.label));
         let mut look = StyleAttr::simple();
 
         look.fill_color = node.style.fill_color;
@@ -354,15 +360,32 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
         node_handles.insert(node.id.clone(), handle);
     }
 
-    for edge in &edges {
+    for (i, edge) in edges.iter().enumerate() {
         if let (Some(&from_handle), Some(&to_handle)) =
             (node_handles.get(&edge.from), node_handles.get(&edge.to))
         {
-            let arrow = if let Some(ref label) = edge.label {
-                Arrow::simple(label)
+            // Check if this is the last applied edge
+            let is_last_applied = if let Some((last_from, last_to)) = &last_applied_edge {
+                edge.from == *last_from && edge.to == *last_to
             } else {
-                Arrow::simple("")
+                false
             };
+            
+            // Add properties for hover detection and styling
+            let class_name = if is_last_applied {
+                "graph-edge-last-applied"
+            } else {
+                ""
+            };
+            
+            let properties = format!(
+                "{}data-edge-index='{}' data-from='{}' data-to='{}'",
+                if !class_name.is_empty() { format!("class='{}' ", class_name) } else { String::new() },
+                i,
+                edge.from,
+                edge.to
+            );
+            let arrow = Arrow::simple_with_properties(edge.label.as_deref().unwrap_or(""), properties);
             vg.add_edge(arrow, from_handle, to_handle);
         }
     }
@@ -373,6 +396,7 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
     }
 
     let node_positions = svg_writer.get_node_positions();
+    let edge_label_positions = svg_writer.get_edge_label_positions();
 
     rsx! {
         div { class: "h-full flex flex-col",
@@ -396,6 +420,34 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
                     div {
                         class: "p-4",
                         onmousemove: move |e: Event<MouseData>| {
+                            let mouse_x = e.element_coordinates().x;
+                            let mouse_y = e.element_coordinates().y;
+                            
+                            // Check if hovering over an edge label
+                            if let Some(handler) = &on_edge_hover {
+                                let mut found_edge = false;
+                                let _mouse_point = Point::new(mouse_x, mouse_y);
+                                
+                                // Check each edge label bounding box
+                                for (edge_idx_str, (top_left, bottom_right)) in &edge_label_positions {
+                                    if let Ok(edge_idx) = edge_idx_str.parse::<usize>() {
+                                        // Check if mouse is within the label bounding box
+                                        if mouse_x >= top_left.x && mouse_x <= bottom_right.x &&
+                                           mouse_y >= top_left.y && mouse_y <= bottom_right.y {
+                                            if let Some(edge) = edges.get(edge_idx) {
+                                                handler.call(Some((edge_idx, edge.from.clone(), edge.to.clone())));
+                                                found_edge = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if !found_edge {
+                                    handler.call(None);
+                                }
+                            }
+                            
                             if on_node_hover.is_some() {
                                 let pos = Point::new(
                                     e.client_coordinates().x,
@@ -405,6 +457,9 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
                             }
                         },
                         onmouseleave: move |_| {
+                            if let Some(handler) = &on_edge_hover {
+                                handler.call(None);
+                            }
                             tooltip_content.set(None);
                         },
                         onclick: move |e: Event<MouseData>| {
@@ -443,21 +498,36 @@ pub fn Graph<T: Clone + std::hash::Hash + Eq + std::fmt::Display + 'static>(
 }
 
 
+// Node ID type that can represent either an expression or a rule
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum GraphNodeId {
+    Expression(crate::ExprId),
+    Rule(crate::ExprId, crate::ExprId, crate::RuleId), // from, to, rule
+}
+
+impl std::fmt::Display for GraphNodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GraphNodeId::Expression(id) => write!(f, "expr_{}", id.0),
+            GraphNodeId::Rule(from, to, rule) => write!(f, "rule_{}_{}_{}", from.0, to.0, rule.0),
+        }
+    }
+}
+
 #[component]
 pub fn TransformationGraph(
     pool: Signal<crate::Pool>,
     current_expr: Option<crate::ExprId>,
     #[props(default = None)] hovered_expr: Option<crate::ExprId>,
-    #[props(default = None)] hovered_edge: Option<(crate::ExprId, crate::ExprId, crate::RuleId)>,
+    #[props(default = None)] last_applied_rule: Option<(crate::ExprId, crate::ExprId, crate::RuleId, crate::rules::Match)>,
     #[props(default = None)] on_node_click: Option<EventHandler<crate::ExprId>>,
-    #[props(default = None)] on_edge_hover: Option<EventHandler<Option<(crate::ExprId, crate::ExprId, crate::RuleId)>>>,
 ) -> Element {
-    let _svg_content = use_signal(|| String::new());
+    let _svg_content = use_signal(String::new);
     
     if let Some(expr_id) = current_expr {
         let pool_ref = pool.read();
-        let mut nodes = vec![];
-        let mut edges = vec![];
+        let mut nodes: Vec<GraphNode<GraphNodeId>> = vec![];
+        let mut edges: Vec<GraphEdge<GraphNodeId>> = vec![];
         let mut group_to_representative = std::collections::HashMap::new();
         
         // Get current expression's equivalence group
@@ -508,30 +578,155 @@ pub fn TransformationGraph(
                 style.min_width = 80.0;
                 
                 nodes.push(GraphNode {
-                    id: representative,
+                    id: GraphNodeId::Expression(representative),
                     label,
                     style,
+                    shape: None, // Use default box shape for expressions
                     properties: Some(format!("data-group-id='{}' data-expr-id='{}'", group_id.0, representative.0)),
                 });
             }
         }
         
-        // Create edges between groups and store metadata
+        // Create edges between groups and store metadata including captures
         let mut edge_metadata = std::collections::HashMap::new();
         for &from_group in &relevant_groups {
             if let Some(outgoing) = pool_ref.equivalence_outgoing.get(&from_group) {
                 for &(to_group, rule_id) in outgoing {
                     if let (Some(&from_repr), Some(&to_repr)) = 
                         (group_to_representative.get(&from_group), group_to_representative.get(&to_group)) {
+                        let _rule_name = pool_ref.display_name(pool_ref[rule_id].name);
+                        
+                        // Find the match that created this transformation to get captures
+                        let matches = pool_ref.find_matches(from_repr);
+                        let match_with_captures = matches.iter()
+                            .find(|m| m.rule_id == rule_id)
+                            .cloned();
+                        
+                        // Store metadata for hover functionality including captures
+                        edge_metadata.insert((from_repr, to_repr), (rule_id, match_with_captures.clone()));
+                        
+                        // Check if this is the last applied rule
+                        let is_last_applied = if let Some((last_from, last_to, last_rule_id, _)) = last_applied_rule {
+                            from_repr == last_from && to_repr == last_to && rule_id == last_rule_id
+                        } else {
+                            false
+                        };
+                        
+                        // Create intermediate rule node
+                        let rule_node_id = GraphNodeId::Rule(from_repr, to_repr, rule_id);
                         let rule_name = pool_ref.display_name(pool_ref[rule_id].name);
                         
-                        // Store metadata for hover functionality
-                        edge_metadata.insert((from_repr, to_repr), rule_id);
+                        // Get rule pattern and action
+                        let rule = pool_ref[rule_id];
+                        let pattern_str = pool_ref.display_with_children(rule.pattern);
+                        let action_str = pool_ref.display_with_children(rule.action);
+                        
+                        // Create nested record structure
+                        let mut main_fields = vec![];
+                        
+                        // Rule name as header
+                        main_fields.push(RecordDef::new_text(&format!("Rule: {}", rule_name)));
+                        
+                        // Pattern section
+                        main_fields.push(RecordDef::Array(vec![
+                            RecordDef::new_text("Pattern:"),
+                            RecordDef::new_text(&pattern_str),
+                        ]));
+                        
+                        // Action section
+                        main_fields.push(RecordDef::Array(vec![
+                            RecordDef::new_text("Action:"),
+                            RecordDef::new_text(&action_str),
+                        ]));
+                        
+                        // Captures section (if any)
+                        if let Some(ref match_) = match_with_captures {
+                            if !match_.captures.is_empty() {
+                                let mut capture_records = vec![];
+                                
+                                // Create capture records with each capture as a horizontal array
+                                for (name_id, captured_value) in &match_.captures {
+                                    let var_name = format!("?{}", pool_ref[*name_id]);
+                                    let value_str = match captured_value {
+                                        crate::rules::CapturedValue::Expression(expr_id) => {
+                                            pool_ref.display_with_children(*expr_id).to_string()
+                                        }
+                                        crate::rules::CapturedValue::Function(fun_id) => {
+                                            format!("fn:{}", pool_ref[*fun_id])
+                                        }
+                                        crate::rules::CapturedValue::StructName(name_id_val) => {
+                                            format!("struct:{}", pool_ref[*name_id_val])
+                                        }
+                                    };
+                                    
+                                    // Each capture is a horizontal array: [var, arrow, value]
+                                    capture_records.push(RecordDef::Array(vec![
+                                        RecordDef::new_text(&var_name),
+                                        RecordDef::new_text("→"),
+                                        RecordDef::new_text(&value_str),
+                                    ]));
+                                }
+                                
+                                // Captures section with header and nested capture records
+                                main_fields.push(RecordDef::Array(vec![
+                                    RecordDef::new_text("Captures:"),
+                                    RecordDef::Array(capture_records),
+                                ]));
+                            }
+                        }
+                        
+                        let shape = Some(ShapeKind::Record(RecordDef::Array(main_fields)));
+                        let label = String::new(); // Empty label since everything is in the record
+                        
+                        // Calculate node height based on content
+                        // Base height + pattern/action sections + captures if any
+                        let capture_count = match_with_captures.as_ref().map_or(0, |m| m.captures.len());
+                        let has_captures = capture_count > 0;
+                        let node_height = 100.0 + (if has_captures { 20.0 + (capture_count as f64 * 16.0) } else { 0.0 });
+                        
+                        // Style for rule node - yellow theme
+                        let rule_style = if is_last_applied {
+                            NodeStyle {
+                                fill_color: Some(Color::new(0xFBBF24)), // amber-400
+                                line_color: Color::new(0xF59E0B), // amber-500
+                                line_width: 3,
+                                font_size: 10,
+                                height: node_height,
+                                min_width: 180.0,
+                                rounded: 8,
+                            }
+                        } else {
+                            NodeStyle {
+                                fill_color: Some(Color::new(0xFEF3C7)), // amber-100
+                                line_color: Color::new(0xF59E0B), // amber-500
+                                line_width: 1,
+                                font_size: 10,
+                                height: node_height,
+                                min_width: 180.0,
+                                rounded: 8,
+                            }
+                        };
+                        
+                        // Add rule node
+                        nodes.push(GraphNode {
+                            id: rule_node_id.clone(),
+                            label,
+                            style: rule_style,
+                            shape,
+                            properties: Some(format!("data-rule-id='{}' data-from='{}' data-to='{}'", rule_id.0, from_repr.0, to_repr.0)),
+                        });
+                        
+                        // Create edges: from_expr -> rule_node -> to_expr
+                        edges.push(GraphEdge {
+                            from: GraphNodeId::Expression(from_repr),
+                            to: rule_node_id.clone(),
+                            label: None,
+                        });
                         
                         edges.push(GraphEdge {
-                            from: from_repr,
-                            to: to_repr,
-                            label: Some(rule_name),
+                            from: rule_node_id,
+                            to: GraphNodeId::Expression(to_repr),
+                            label: None,
                         });
                     }
                 }
@@ -543,7 +738,58 @@ pub fn TransformationGraph(
                 // Export button and header
                 div { class: "flex items-center justify-between p-4 border-b",
                     h3 { class: "text-lg font-semibold", "Equivalence Classes Graph" }
-                    // TODO: Add SVG export functionality
+                    button {
+                        class: format!("{} text-sm", crate::ui::styles::BTN_SECONDARY),
+                        onclick: move |_| {
+                            use layout::backends::svg::SVGWriter;
+                            
+                            // Generate SVG content
+                            let mut vg = VisualGraph::new(Orientation::TopToBottom);
+                            let mut node_handles = HashMap::new();
+                            
+                            // Add all nodes to the graph
+                            for node in &nodes {
+                                let shape = node.shape.clone().unwrap_or_else(|| ShapeKind::new_box(&node.label));
+                                let mut look = StyleAttr::simple();
+                                look.fill_color = node.style.fill_color;
+                                look.line_color = node.style.line_color;
+                                look.line_width = node.style.line_width;
+                                look.font_size = node.style.font_size;
+                                look.rounded = node.style.rounded;
+                                
+                                let width = (node.label.len() as f64 * 8.0 + 20.0).max(node.style.min_width);
+                                let size = Point::new(width, node.style.height);
+                                
+                                let elem = if let Some(ref props) = node.properties {
+                                    LayoutElement::create_with_properties(shape, look, Orientation::TopToBottom, size, props.clone())
+                                } else {
+                                    LayoutElement::create(shape, look, Orientation::TopToBottom, size)
+                                };
+                                
+                                let handle = vg.add_node(elem);
+                                node_handles.insert(node.id.clone(), handle);
+                            }
+                            
+                            // Add all edges
+                            for edge in &edges {
+                                if let (Some(&from_handle), Some(&to_handle)) = 
+                                    (node_handles.get(&edge.from), node_handles.get(&edge.to)) {
+                                    let arrow = Arrow::simple(edge.label.as_deref().unwrap_or(""));
+                                    vg.add_edge(arrow, from_handle, to_handle);
+                                }
+                            }
+                            
+                            // Render to SVG using the standard SVGWriter
+                            if !node_handles.is_empty() {
+                                let mut svg_writer = SVGWriter::new();
+                                vg.do_it(false, false, false, &mut svg_writer);
+                                let svg_content = svg_writer.finalize();
+                                
+                                crate::ui::file_utils::download_text_file("transformation_graph.svg", &svg_content);
+                            }
+                        },
+                        "📊 Export SVG"
+                    }
                 }
                 
                 // Graph content
@@ -554,44 +800,19 @@ pub fn TransformationGraph(
                         vertical: true,
                         title: "".to_string(), // Title already in header
                         show_header: false,
+                        last_applied_edge: None,
                         empty_message: Some("No transformations found. Apply rules to see the graph.".to_string()),
-                        on_node_click: on_node_click,
+                        on_node_click: {
+                            on_node_click.map(|handler| EventHandler::new(move |node_id: GraphNodeId| {
+                                    // Only handle clicks on expression nodes
+                                    if let GraphNodeId::Expression(expr_id) = node_id {
+                                        handler.call(expr_id);
+                                    }
+                                    // Rule nodes are just for display
+                                }))
+                        },
                         on_node_hover: None,
-                    }
-                    
-                    // Edge hover tooltip
-                    if let Some((from, to, rule_id)) = hovered_edge {
-                        div {
-                            class: "absolute bg-gray-900 text-white p-3 rounded shadow-lg text-sm z-50",
-                            style: "top: 20px; right: 20px; max-width: 300px;",
-                            
-                            div { class: "font-semibold mb-2", 
-                                "Rule: {pool_ref.display_name(pool_ref[rule_id].name)}" 
-                            }
-                            
-                            div { class: "space-y-1 text-xs",
-                                div { 
-                                    span { class: "text-gray-400", "From: " }
-                                    span { "{pool_ref.display_with_children(from)}" }
-                                }
-                                div { 
-                                    span { class: "text-gray-400", "To: " }
-                                    span { "{pool_ref.display_with_children(to)}" }
-                                }
-                                
-                                // Show the rule pattern and action
-                                div { class: "mt-2 pt-2 border-t border-gray-700",
-                                    div { class: "text-gray-400", "Pattern:" }
-                                    div { class: "font-mono", 
-                                        "{pool_ref.display_with_children(pool_ref[rule_id].pattern)}" 
-                                    }
-                                    div { class: "text-gray-400 mt-1", "Action:" }
-                                    div { class: "font-mono", 
-                                        "{pool_ref.display_with_children(pool_ref[rule_id].action)}" 
-                                    }
-                                }
-                            }
-                        }
+                        on_edge_hover: None,
                     }
                 }
             }
@@ -605,7 +826,7 @@ pub fn TransformationGraph(
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum UIError {
     ParseError {
         message: String,

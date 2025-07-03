@@ -1,6 +1,7 @@
 pub mod app;
 pub mod components;
 pub mod display_components;
+pub mod file_utils;
 pub mod navigation;
 pub mod pages;
 pub mod primitives;

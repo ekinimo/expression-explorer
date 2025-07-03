@@ -12,7 +12,7 @@ mod basic_pool_operations {
     fn test_new_pool() {
         let pool = new_test_pool();
 
-        assert!(pool.functions.len() > 0);
+        assert!(!pool.functions.is_empty());
 
         assert_eq!(pool.exprs.len(), 0);
         assert_eq!(pool.patterns.len(), 0);

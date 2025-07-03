@@ -4,8 +4,9 @@ use crate::{
     RulesetId,
 };
 use dioxus::prelude::*;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ViewMode {
     Text,
 }

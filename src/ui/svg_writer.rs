@@ -14,6 +14,7 @@ pub struct DioxusSVGWriter {
     font_style_map: HashMap<usize, String>,
     clip_regions: Vec<VNode>,
     node_positions: HashMap<String, (Point, Point)>, // expr_id -> (position, size)
+    edge_label_positions: HashMap<String, (Point, Point)>, // edge_id -> (top-left, bottom-right)
 }
 
 impl Default for DioxusSVGWriter {
@@ -31,11 +32,16 @@ impl DioxusSVGWriter {
             font_style_map: HashMap::new(),
             clip_regions: Vec::new(),
             node_positions: HashMap::new(),
+            edge_label_positions: HashMap::new(),
         }
     }
 
     pub fn get_node_positions(&self) -> HashMap<String, (Point, Point)> {
         self.node_positions.clone()
+    }
+
+    pub fn get_edge_label_positions(&self) -> HashMap<String, (Point, Point)> {
+        self.edge_label_positions.clone()
     }
 
     fn grow_window(&mut self, point: Point, size: Point) {
@@ -80,6 +86,14 @@ impl DioxusSVGWriter {
             }
             .graph-node:hover {
                 filter: brightness(1.1);
+                stroke-width: 3px !important;
+            }
+            .graph-edge-label {
+                cursor: pointer;
+                user-select: none;
+            }
+            .graph-edge-last-applied {
+                stroke: #10b981 !important;
                 stroke-width: 3px !important;
             }
         "#;
@@ -166,18 +180,43 @@ impl RenderBackend for DioxusSVGWriter {
             .unwrap_or_default();
 
         // Check if this node has interaction data
-        let has_expr_id = props.contains("data-expr-id");
+        let has_node_data = props.contains("data-expr-id") || props.contains("data-rule-id");
 
-        let rect_element = if has_expr_id {
-            // Extract expr-id and add as a proper attribute
-            let expr_id = props
-                .split("data-expr-id='")
-                .nth(1)
-                .and_then(|s| s.split("'").next())
-                .unwrap_or("");
+        let rect_element = if has_node_data {
+            // Extract node ID for position tracking
+            let node_id = if props.contains("data-expr-id") {
+                props
+                    .split("data-expr-id='")
+                    .nth(1)
+                    .and_then(|s| s.split("'").next())
+                    .map(|id| format!("expr_{}", id))
+                    .unwrap_or_default()
+            } else if props.contains("data-rule-id") {
+                // Extract from, to, and rule id to reconstruct the GraphNodeId string representation
+                let rule_id = props
+                    .split("data-rule-id='")
+                    .nth(1)
+                    .and_then(|s| s.split("'").next())
+                    .unwrap_or("");
+                let from_id = props
+                    .split("data-from='")
+                    .nth(1)
+                    .and_then(|s| s.split("'").next())
+                    .unwrap_or("");
+                let to_id = props
+                    .split("data-to='")
+                    .nth(1)
+                    .and_then(|s| s.split("'").next())
+                    .unwrap_or("");
+                format!("rule_{}_{}_{}", from_id, to_id, rule_id)
+            } else {
+                String::new()
+            };
 
             // Store node position for click detection
-            self.node_positions.insert(expr_id.to_string(), (xy, size));
+            if !node_id.is_empty() {
+                self.node_positions.insert(node_id.clone(), (xy, size));
+            }
 
             rsx!(rect {
                 x: "{xy.x}",
@@ -188,9 +227,9 @@ impl RenderBackend for DioxusSVGWriter {
                 stroke: "{stroke}",
                 stroke_width: "{stroke_width}",
                 rx: "{rounded_px}",
-                style: "{clip_path}",
+                style: "{clip_path} {props}",
                 class: "graph-node clickable-node",
-                "data-expr-id": "{expr_id}"
+                "data-node-id": "{node_id}"
             })
         } else {
             rsx!(rect {
@@ -302,7 +341,19 @@ impl RenderBackend for DioxusSVGWriter {
         let dash = if dashed { "5,5" } else { "" };
         let marker_start = if head.0 { "url(#startarrow)" } else { "" };
         let marker_end = if head.1 { "url(#endarrow)" } else { "" };
-        let props = properties.unwrap_or_default();
+        let props = properties.clone().unwrap_or_default();
+        
+        // Extract edge index from properties if available
+        let mut edge_id_opt = None;
+        if let Some(ref prop_str) = properties {
+            if let Some(edge_idx_start) = prop_str.find("data-edge-index='") {
+                let edge_idx_start = edge_idx_start + 17; // length of "data-edge-index='"
+                if let Some(edge_idx_end) = prop_str[edge_idx_start..].find('\'') {
+                    let edge_id = prop_str[edge_idx_start..edge_idx_start + edge_idx_end].to_string();
+                    edge_id_opt = Some(edge_id);
+                }
+            }
+        }
 
         let mut d = format!(
             "M {} {} C {} {}, {} {}, {} {} ",
@@ -339,18 +390,38 @@ impl RenderBackend for DioxusSVGWriter {
             .unwrap(),
         );
 
-        self.elements.push(
-            rsx!(text {
-                textPath {
-                    href: "#arrow{id}",
-                    start_offset: "50%",
-                    text_anchor: "middle",
-                    class: "{text_class}",
-                    "{text}"
-                }
-            })
-            .unwrap(),
-        );
+        if !text.is_empty() {
+            // Calculate label bounding box based on text length and font size
+            if let (Some(edge_id), Some(first), Some(last)) = (edge_id_opt.as_ref(), path.first(), path.last()) {
+                // Calculate the middle point of the path
+                let mid_x = (first.0.x + last.1.x) / 2.0;
+                let mid_y = (first.0.y + last.1.y) / 2.0;
+                
+                // Calculate text dimensions (approximate)
+                let text_width = text.len() as f64 * (look.font_size as f64 * 0.6); // Approximate character width
+                let text_height = look.font_size as f64 * 1.2; // Line height
+                
+                // Calculate bounding box
+                let top_left = Point::new(mid_x - text_width / 2.0, mid_y - text_height / 2.0);
+                let bottom_right = Point::new(mid_x + text_width / 2.0, mid_y + text_height / 2.0);
+                
+                self.edge_label_positions.insert(edge_id.clone(), (top_left, bottom_right));
+            }
+            
+            self.elements.push(
+                rsx!(text {
+                    textPath {
+                        href: "#arrow{id}",
+                        start_offset: "50%",
+                        text_anchor: "middle",
+                        class: "{text_class} graph-edge-label",
+                        dominant_baseline: "middle",
+                        "{text}"
+                    }
+                })
+                .unwrap(),
+            );
+        }
     }
 
     fn create_clip(&mut self, xy: Point, size: Point, rounded_px: usize) -> ClipHandle {

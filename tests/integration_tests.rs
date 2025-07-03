@@ -144,7 +144,7 @@ mod ruleset_integration {
         let expr = parse_expression(expr_text, &mut pool).expect("Failed to parse expression");
 
         let matches = pool.find_matches(expr);
-        assert!(matches.len() > 0);
+        assert!(!matches.is_empty());
 
         if let Some(result) = pool.apply_rule(&matches[0]) {
             let result_display = pool.display_with_children(result);

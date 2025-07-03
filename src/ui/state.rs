@@ -1,9 +1,10 @@
 use super::{display_components::ViewMode, navigation::Page, primitives::UIError};
 use crate::{ExprId, Pool, RuleId, RulesetId, rules::Match};
 use dioxus::prelude::*;
+use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AppState {
     pub current_page: Page,
     pub navigation_history: Vec<Page>,
@@ -24,7 +25,7 @@ impl Default for AppState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExpressionState {
     pub current_expr: Option<ExprId>,
     pub selected_expressions: Vec<ExprId>,
@@ -43,7 +44,7 @@ impl Default for ExpressionState {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RulesState {
     pub current_matches: Vec<Match>,
     pub applied_rules_history: Vec<(ExprId, RuleId, ExprId)>,
@@ -51,7 +52,7 @@ pub struct RulesState {
     pub rules_panel_collapsed: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InputState {
     pub expr_text: String,
     pub expr_error: Option<UIError>,
@@ -80,6 +81,16 @@ impl Default for InputState {
             parsed_rulesets: Vec::new(),
         }
     }
+}
+
+// Combined state for serialization
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CompleteAppState {
+    pub app_state: AppState,
+    pub expression_state: ExpressionState,
+    pub rules_state: RulesState,
+    pub input_state: InputState,
+    pub pool: Pool,
 }
 
 #[component]

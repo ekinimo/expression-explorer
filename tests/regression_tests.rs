@@ -68,7 +68,7 @@ mod parser_bug_fixes {
 
     #[test]
     fn test_parser_no_garbage_creation() {
-        let (mut pool, _expr) = parse_test_expr("(x + x)");
+        let (pool, _expr) = parse_test_expr("(x + x)");
 
         let x_count = pool.names.iter().filter(|name| name == &"x").count();
         assert_eq!(x_count, 1, "Parser created duplicate variable names");

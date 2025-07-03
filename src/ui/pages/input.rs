@@ -1,5 +1,6 @@
 use super::super::{
     display_components::{ExpressionCard, ParsedRulesetsList, PrebuiltRulesets},
+    file_utils,
     navigation::Page,
     primitives::{ErrorDisplay, UIError},
     state::{InputStateProvider, use_expression_input, use_parsing_state, use_ruleset_input},
@@ -41,12 +42,12 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
             
             // Workflow progress indicator
             div { class: "flex items-center justify-center gap-2 mb-6",
-                div { class: if input_state.read().parsed_rulesets.len() > 0 { 
+                div { class: if !input_state.read().parsed_rulesets.is_empty() { 
                     "flex items-center gap-2 text-green-600 font-medium" 
                 } else { 
                     "flex items-center gap-2 text-gray-400" 
                 },
-                    div { class: if input_state.read().parsed_rulesets.len() > 0 { 
+                    div { class: if !input_state.read().parsed_rulesets.is_empty() { 
                         "w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center text-sm" 
                     } else { 
                         "w-8 h-8 rounded-full bg-gray-300 text-white flex items-center justify-center text-sm" 
@@ -159,7 +160,66 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
                             }
 
                             div {
-                                label { class: styles::LABEL, "Transformation Rules" }
+                                div { class: "flex items-center justify-between mb-2",
+                                    label { class: styles::LABEL, "Transformation Rules" }
+                                    div { class: "flex gap-2",
+                                        // Upload button
+                                        label {
+                                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                                            "for": "ruleset-upload",
+                                            "📁 Upload"
+                                        }
+                                        input {
+                                            id: "ruleset-upload",
+                                            r#type: "file",
+                                            accept: ".txt,.rules",
+                                            class: "hidden",
+                                            onchange: move |evt| {
+                                                spawn(async move {
+                                                    if let Some((_filename, contents)) = file_utils::read_file_from_event(&evt).await {
+                                                        let mut state = input_state.write();
+                                                        state.ruleset_text = contents.clone();
+                                                        state.ruleset_error = None;
+                                                        state.ruleset_result = None;
+                                                        
+                                                        // Auto-parse the uploaded ruleset
+                                                        let mut p = pool.write();
+                                                        match parser::parse_ruleset(&contents, &mut p) {
+                                                            Ok(ruleset_id) => {
+                                                                state.ruleset_error = None;
+                                                                state.ruleset_result = Some(ruleset_id);
+                                                                if !state.parsed_rulesets.contains(&ruleset_id) {
+                                                                    state.parsed_rulesets.push(ruleset_id);
+                                                                }
+                                                                if state.selected_ruleset.is_none() {
+                                                                    state.selected_ruleset = Some(ruleset_id);
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                state.ruleset_error = Some(UIError::ParseError {
+                                                                    message: format!("Ruleset: {}", e),
+                                                                    position: None
+                                                                });
+                                                                state.ruleset_result = None;
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        
+                                        // Download button
+                                        button {
+                                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                                            disabled: ruleset_text.is_empty(),
+                                            onclick: move |_| {
+                                                let text = input_state.read().ruleset_text.clone();
+                                                file_utils::download_text_file("ruleset.txt", &text);
+                                            },
+                                            "💾 Download"
+                                        }
+                                    }
+                                }
                                 textarea {
                                     class: styles::TEXTAREA_LG,
                                     placeholder: "Enter ruleset (e.g., algebra {{ rule_name: ?pattern => action }})",
@@ -253,7 +313,65 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
                         
                         div { class: styles::SPACE_Y_4,
                             div {
-                                label { class: styles::LABEL, "Mathematical Expression" }
+                                div { class: "flex items-center justify-between mb-2",
+                                    label { class: styles::LABEL, "Mathematical Expression" }
+                                    div { class: "flex gap-2",
+                                        // Upload button
+                                        label {
+                                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                                            "for": "expr-upload",
+                                            "📁 Upload"
+                                        }
+                                        input {
+                                            id: "expr-upload",
+                                            r#type: "file",
+                                            accept: ".txt,.expr",
+                                            class: "hidden",
+                                            onchange: move |evt| {
+                                                spawn(async move {
+                                                    if let Some((_filename, contents)) = file_utils::read_file_from_event(&evt).await {
+                                                        let mut state = input_state.write();
+                                                        state.expr_text = contents.clone();
+                                                        state.expr_error = None;
+                                                        state.expr_result = None;
+                                                        
+                                                        // Auto-parse the uploaded expression if we have a selected ruleset
+                                                        if state.selected_ruleset.is_some() {
+                                                            let mut p = pool.write();
+                                                            match parser::expr::parse_expression(&contents, &mut p) {
+                                                                Ok(expr_id) => {
+                                                                    state.expr_error = None;
+                                                                    state.expr_result = Some(expr_id);
+                                                                    state.parsing_blocked = true;
+                                                                    // Navigate to explorer page after successful parse
+                                                                    on_navigate.call(Page::Explorer);
+                                                                }
+                                                                Err(e) => {
+                                                                    state.expr_error = Some(UIError::ParseError {
+                                                                        message: e.to_string(),
+                                                                        position: None
+                                                                    });
+                                                                    state.expr_result = None;
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        
+                                        // Download button
+                                        button {
+                                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                                            disabled: expr_text.is_empty(),
+                                            onclick: move |_| {
+                                                let text = input_state.read().expr_text.clone();
+                                                file_utils::download_text_file("expression.txt", &text);
+                                            },
+                                            "💾 Download"
+                                        }
+                                    }
+                                }
                                 textarea {
                                     class: styles::TEXTAREA,
                                     placeholder: "Enter mathematical expression (e.g., (x + y) * 2, sin(x + 1), Point{{x, y}})",
@@ -320,7 +438,59 @@ fn InputPageContent(pool: Signal<Pool>, on_navigate: EventHandler<Page>) -> Elem
             }
 
             div { class: styles::PANEL,
-                h3 { class: styles::TITLE_SUBSECTION, "Pool Status" }
+                div { class: "flex items-center justify-between mb-4",
+                    h3 { class: styles::TITLE_SUBSECTION, "Pool Status" }
+                    div { class: "flex gap-2",
+                        // Upload pool button
+                        label {
+                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                            "for": "pool-upload",
+                            "📁 Import Pool"
+                        }
+                        input {
+                            id: "pool-upload",
+                            r#type: "file",
+                            accept: ".json",
+                            class: "hidden",
+                            onchange: move |evt| {
+                                spawn(async move {
+                                    if let Some((_filename, contents)) = file_utils::read_file_from_event(&evt).await {
+                                        match serde_json::from_str::<crate::Pool>(&contents) {
+                                            Ok(imported_pool) => {
+                                                pool.set(imported_pool);
+                                                log::info!("Pool imported successfully");
+                                                // Navigate to explorer page after successful import
+                                                on_navigate.call(Page::Explorer);
+                                            }
+                                            Err(e) => {
+                                                log::error!("Failed to import pool: {}", e);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        
+                        // Export pool button
+                        button {
+                            class: format!("{} text-sm", styles::BTN_SECONDARY),
+                            onclick: move |_| {
+                                let pool_ref = pool.read();
+                                
+                                // Serialize the entire pool to JSON
+                                match serde_json::to_string_pretty(&*pool_ref) {
+                                    Ok(json_content) => {
+                                        file_utils::download_text_file("pool_export.json", &json_content);
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to serialize pool: {}", e);
+                                    }
+                                }
+                            },
+                            "💾 Export Pool"
+                        }
+                    }
+                }
                 div { class: styles::GRID_3,
                     div { class: styles::CARD,
                         div { class: styles::TEXT_SMALL, "Expressions" }

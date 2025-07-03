@@ -631,6 +631,8 @@ dependencies = [
  "log",
  "pest",
  "pest_derive",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
